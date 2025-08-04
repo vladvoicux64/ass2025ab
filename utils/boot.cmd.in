@@ -1,8 +1,4 @@
-setenv fdt_addr 0x88000000
-setenv fdt_file imx93-11x11-frdm.dtb
-load mmc 0:1 ${fdt_addr} ${fdt_file}
-fdt addr ${fdt_addr}
-fdt get value bootargs /chosen bootargs
+fdt addr ${fdt_addr} && fdt get value bootargs /chosen bootargs
 
 test -n "${BOOT_ORDER}" || setenv BOOT_ORDER "B A"
 test -n "${BOOT_A_LEFT}" || setenv BOOT_A_LEFT 3
@@ -44,7 +40,7 @@ else
   reset
 fi
 
-load ${BOOT_DEV} 0x10000000 fitImage
+load ${BOOT_DEV} 0x10000000 linux.itb
 if test ! -e mmc 0:1 uboot.env; then saveenv; fi;
 bootm 0x10000000
 reset
