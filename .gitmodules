@@ -1,0 +1,3 @@
+[submodule "imx-linux-builder"]
+	path = imx-linux-builder
+	url = https://github.com/niflostancu/imx-linux-builder.git
