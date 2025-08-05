@@ -8,6 +8,7 @@ IMG_NAME="disk.img"
 IMAGE="$OUTPUT_DIR/$IMG_NAME"
 MOUNT_BASE="$OUTPUT_DIR/mounts"
 KERNEL_IMAGE="$OUTPUT_DIR/linux.itb"
+ENV_FILE="$OUTPUT_DIR/uboot.txt"
 
 echo "[+] Creating mount base directory: $MOUNT_BASE"
 mkdir -p "$MOUNT_BASE"
@@ -39,6 +40,9 @@ sudo mount "$PART0" "$mount_point"
 
 echo "[+] Copying kernel image to $mount_point/"
 sudo cp "$KERNEL_IMAGE" "$mount_point"
+
+echo "[+] Copying environment to $mount_point/"
+sudo cp "$ENV_FILE" "$mount_point"
 
 echo "[+] Unmounting $mount_point"
 sudo umount "$mount_point"
