@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Description: installs RAUC and config files into both rootfs partitions using chroot + QEMU
+# Description: Installs RAUC and config files into both rootfs partitions using chroot + QEMU
 
 OUTPUT_DIR="artifacts"
 IMG_NAME="disk.img"
@@ -12,6 +12,7 @@ UTIL_DIR="utils"
 CERT="$UTIL_DIR/ca.cert.pem"
 SERVICE="$UTIL_DIR/rauc-mark-good.service"
 CONF="$UTIL_DIR/system.conf"
+FSTAB="$UTIL_DIR/fstab"
 
 QEMU_STATIC_BIN="/usr/bin/qemu-aarch64-static"
 
@@ -46,15 +47,32 @@ if ((NUM_PARTS < 3)); then
   exit 1
 fi
 
+BOOT_PART="/dev/${PARTS[0]}"
 PART1="/dev/${PARTS[1]}"
 PART2="/dev/${PARTS[2]}"
 echo "[+] Using rootfs partitions: $PART1 and $PART2"
+echo "[+] Using boot partition: $BOOT_PART"
+
+# Function to generate a default fstab
+generate_default_fstab() {
+  cat <<EOF
+LABEL=rootfsA  /      ext4 defaults 0 1
+LABEL=BOOT     /boot  vfat defaults 0 2
+LABEL=data     /data  ext4 defaults 0 2
+EOF
+}
 
 for part in "$PART1" "$PART2"; do
-  mount_point="$MOUNT_BASE/$(basename $part)"
-  echo "[+] Mounting $part to $mount_point"
+  mount_point="$MOUNT_BASE/$(basename "$part")"
+  boot_mount="$MOUNT_BASE/boot"
+
+  echo "[+] Mounting rootfs: $part to $mount_point"
   mkdir -p "$mount_point"
   sudo mount "$part" "$mount_point"
+
+  echo "[+] Mounting boot partition $BOOT_PART to $boot_mount"
+  mkdir -p "$boot_mount"
+  sudo mount "$BOOT_PART" "$boot_mount"
 
   echo "[+] Copying QEMU static binary to $mount_point/usr/bin/"
   sudo mkdir -p "$mount_point/usr/bin"
@@ -70,28 +88,63 @@ for part in "$PART1" "$PART2"; do
 
   echo "[+] Installing RAUC in chroot..."
   sudo chroot "$mount_point" /usr/bin/qemu-aarch64-static /bin/bash -c "
+    set -e
     apt update &&
-    apt install -y rauc &&
-    mkdir -p /etc/rauc &&
-    mkdir -p /etc/systemd/system &&
-    mkdir -p /etc/systemd/system/rauc-mark-good:.service.d
+    apt install -y rauc rauc-service u-boot-tools
   "
+
+  echo "[+] Creating needed directories inside mounted rootfs"
+  sudo mkdir -p "$mount_point/etc/rauc"
+  sudo mkdir -p "$mount_point/etc/systemd/system/rauc-mark-good.service.d"
 
   echo "[+] Copying configuration files..."
   sudo cp "$CERT" "$mount_point/etc/rauc/"
-  sudo cp "$SERVICE" "$mount_point/etc/systemd/system/"
   sudo cp "$CONF" "$mount_point/etc/rauc/"
+  sudo cp "$SERVICE" "$mount_point/etc/systemd/system/"
+
+  echo "[+] Installing fstab..."
+  if [[ -f "$FSTAB" ]]; then
+    echo "    Using user-provided $FSTAB"
+    sudo cp "$FSTAB" "$mount_point/etc/fstab"
+  else
+    echo "    Generating default fstab for RAUC setup"
+    generate_default_fstab | sudo tee "$mount_point/etc/fstab" >/dev/null
+  fi
+
+  echo "[+] Creating /etc/fw_env.config pointing to /boot/uboot.env"
+  echo "/boot/uboot.env 0x0 0x4000" | sudo tee "$mount_point/etc/fw_env.config" >/dev/null
+
+  echo "[+] Enabling rauc and rauc-mark-good services..."
+  systemd_dir="$mount_point/etc/systemd/system"
+  sudo mkdir -p "$systemd_dir/multi-user.target.wants"
+
+  if [[ -f "$systemd_dir/rauc.service" ]]; then
+    sudo ln -sf "../rauc.service" "$systemd_dir/multi-user.target.wants/rauc.service"
+    echo "  Enabled rauc.service in $part"
+  else
+    echo "  Warning: rauc.service not found in $part"
+  fi
+
+  if [[ -f "$systemd_dir/rauc-mark-good.service" ]]; then
+    sudo ln -sf "../rauc-mark-good.service" "$systemd_dir/multi-user.target.wants/rauc-mark-good.service"
+    echo "  Enabled rauc-mark-good.service in $part"
+  else
+    echo "  Warning: rauc-mark-good.service not found in $part"
+  fi
 
   echo "[+] Unmounting chroot filesystems"
   for fs in run sys proc dev/pts dev; do
     sudo umount "$mount_point/$fs" || true
   done
 
-  echo "[+] Unmounting $mount_point"
+  echo "[+] Unmounting rootfs $mount_point"
   sudo umount "$mount_point"
+
+  echo "[+] Unmounting boot partition $boot_mount"
+  sudo umount "$boot_mount"
 done
 
 echo "[+] Detaching loop device $LOOP_DEVICE"
 sudo losetup -d "$LOOP_DEVICE"
 
-echo "[✔] RAUC and config installed on both rootfs partitions."
+echo "[✔] RAUC, config files, services, fstab, and fw_env.config set up correctly on both rootfs partitions."
