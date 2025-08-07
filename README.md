@@ -112,11 +112,10 @@ Use the same base system (e.g., `debootstrap --arch=arm64 jammy`) into both part
 
 📄 File: `05-modify-bootcmd.sh`
 
-You’ll need to modify the `boot.cmd` or `boot.scr` generation in **imx-image-builder** to support RAUC boot logic.
 
 Tasks:
-- Clone [imx-image-builder](https://github.com/freemangordon/imx-image-builder) or use a local copy.
-- Edit `boot.cmd.in` or equivalent to support the `rauc.status` logic.
+- Clone [imx-image-builder](https://github.com/freemangordon/imx-image-builder) or use a local copy (I've included it as a submodule for you).
+- Run the script, that repalces bootcmd with the provided copy.
 - Regenerate `flash.bin`.
 
 <details>
